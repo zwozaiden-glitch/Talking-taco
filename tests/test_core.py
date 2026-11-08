@@ -191,10 +191,18 @@ async def test_provider_handles_legacy_text_completion_shape():
 
 # ---------------------------------------------------------------- config/validation
 def test_ai_config_reports_missing_fields():
-    cfg = AIConfig(base_url="", api_key="", model="")
+    # OpenAI-compatible endpoints need an explicit base URL.
+    cfg = AIConfig(base_url="", api_key="", model="", provider="openai")
     problems = cfg.validate()
     assert len(problems) == 3
     assert any("AI_BASE_URL" in p for p in problems)
+
+
+def test_gemini_config_does_not_require_base_url():
+    # Gemini has a working default endpoint, so only key/model are required.
+    cfg = AIConfig(base_url="", api_key="AIzaSyKEY", model="auto", provider="gemini")
+    problems = cfg.validate()
+    assert not any("AI_BASE_URL" in p for p in problems)
 
 
 def test_bot_config_validation():

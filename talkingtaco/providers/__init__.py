@@ -3,6 +3,7 @@
 Swapping backends is a config change, never a code change::
 
     AI_PROVIDER=openai    # any OpenAI-compatible endpoint (default)
+    AI_PROVIDER=gemini    # Google Gemini / AI Studio (keys start with AIza)
     AI_PROVIDER=mock      # no network, canned replies
 
 To add a custom API shape, write a class implementing ``AIProvider`` and
@@ -15,6 +16,7 @@ from collections.abc import Callable
 
 from ..config import AIConfig
 from .base import AIError, AIProvider, ChatMessage, Role
+from .gemini import GeminiProvider
 from .mock import MockProvider
 from .openai_compatible import OpenAICompatibleProvider
 
@@ -22,6 +24,9 @@ ProviderFactory = Callable[[AIConfig], AIProvider]
 
 _REGISTRY: dict[str, ProviderFactory] = {
     "openai": OpenAICompatibleProvider,
+    # Google Gemini / AI Studio (keys start with "AIza").
+    "gemini": GeminiProvider,
+    "google": GeminiProvider,
     "mock": lambda config: MockProvider(),
 }
 
@@ -50,6 +55,7 @@ __all__ = [
     "AIError",
     "AIProvider",
     "ChatMessage",
+    "GeminiProvider",
     "MockProvider",
     "OpenAICompatibleProvider",
     "Role",

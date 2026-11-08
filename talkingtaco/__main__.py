@@ -6,6 +6,9 @@ import asyncio
 import logging
 import sys
 
+from aiohttp import ClientConnectorError as _ClientConnectionError
+from discord import LoginFailure as _LoginFailure
+
 from .bot import TacoBot
 from .config import load_ai_config, load_bot_config
 from .providers import AIError, create_provider
@@ -91,14 +94,31 @@ def main(argv: list[str] | None = None) -> int:
         asyncio.run(_run(bot, bot_config.token, log))
     except KeyboardInterrupt:
         log.info("Shutting down.")
+        return 0
+    except _LoginFailure:
+        log.error(
+            "Discord rejected the token. Reset it in the Developer Portal "
+            "(Bot -> Reset Token) and update DISCORD_TOKEN in .env."
+        )
+        return 2
+    except (OSError, _ClientConnectionError) as exc:
+        log.error(
+            "Could not connect to discord.com (%s).\n"
+            "  - Check your internet connection, DNS, or firewall/proxy.\n"
+            "  - On a server, make sure outbound HTTPS (port 443) is allowed.\n"
+            "  - Some sandboxes/CI environments block Discord entirely.",
+            exc,
+        )
+        return 3
+    except Exception:
+        log.exception("Fatal error while running the bot")
+        return 1
     return 0
 
 
 async def _run(bot: TacoBot, token: str, log) -> None:
     try:
         await bot.start(token)
-    except KeyboardInterrupt:
-        pass
     finally:
         if not bot.is_closed():
             await bot.close()

@@ -48,11 +48,40 @@ async def check_ai(ai: AIConfig) -> CheckResult:
             [ChatMessage("user", "Reply with exactly: pong")]
         )
         preview = reply.strip().replace("\n", " ")[:80]
-        return CheckResult("AI endpoint", OK, f"{ai.model} -> {preview!r}")
+        model = getattr(provider, "_model", "") or ai.model
+        return CheckResult("AI endpoint", OK, f"{ai.provider}/{model} -> {preview!r}")
     except AIError as exc:
-        return CheckResult("AI endpoint", FAIL, str(exc))
+        detail = str(exc)
+        models = await list_models(ai)
+        if models:
+            detail += f" | this key can use: {', '.join(models[:8])}"
+        return CheckResult("AI endpoint", FAIL, detail)
     finally:
         await provider.aclose()
+
+
+async def list_models(ai: AIConfig) -> list[str]:
+    """Best-effort list of usable models, to help fix a model-name problem."""
+    if ai.provider not in {"gemini", "google"}:
+        return []
+    base = (ai.base_url or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(
+                f"{base}/models", headers={"x-goog-api-key": ai.api_key}
+            )
+            if response.status_code >= 400:
+                return []
+            entries = response.json().get("models", [])
+    except (httpx.HTTPError, ValueError):
+        return []
+
+    usable = []
+    for entry in entries:
+        methods = entry.get("supportedGenerationMethods") or []
+        if "generateContent" in methods:
+            usable.append(str(entry.get("name", "")).removeprefix("models/"))
+    return sorted(n for n in usable if n)
 
 
 async def check_discord(token: str) -> CheckResult:
@@ -66,7 +95,12 @@ async def check_discord(token: str) -> CheckResult:
                 "https://discord.com/api/v10/users/@me", headers=headers
             )
     except httpx.HTTPError as exc:
-        return CheckResult("Discord token", FAIL, f"network error: {exc}")
+        return CheckResult(
+            "Discord token",
+            WARN,
+            f"could not reach discord.com ({exc.__class__.__name__}). "
+            "Network/firewall issue, not necessarily a bad token.",
+        )
 
     if response.status_code == 401:
         return CheckResult(

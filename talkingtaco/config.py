@@ -59,12 +59,19 @@ class AIConfig:
     max_tokens: int = field(default_factory=lambda: _get_int("AI_MAX_TOKENS", 600))
     temperature: float = field(default_factory=lambda: _get_float("AI_TEMPERATURE", 0.8))
     timeout: float = field(default_factory=lambda: _get_float("AI_TIMEOUT", 60.0))
-    provider: str = field(default_factory=lambda: _get("AI_PROVIDER", "openai").lower())
+    provider: str = field(default_factory=lambda: _detect_provider())
+    # Gemini 2.5+ "thinking" budget. 0 disables thinking for fast chat replies.
+    thinking_budget: int = field(default_factory=lambda: _get_int("AI_THINKING_BUDGET", 0))
+
+    @property
+    def needs_base_url(self) -> bool:
+        """Gemini has a sensible default endpoint; others must be explicit."""
+        return self.provider != "gemini"
 
     def validate(self) -> list[str]:
         """Return a list of human-readable problems (empty means OK)."""
         problems: list[str] = []
-        if not self.base_url:
+        if self.needs_base_url and not self.base_url:
             problems.append("AI_BASE_URL is not set (e.g. https://api.openai.com/v1)")
         if not self.model:
             problems.append("AI_MODEL is not set (e.g. gpt-4o-mini)")
@@ -96,6 +103,25 @@ class BotConfig:
         if self.trigger_mode not in {"mention", "prefix", "both"}:
             problems.append("BOT_TRIGGER_MODE must be one of: mention, prefix, both")
         return problems
+
+
+def _detect_provider() -> str:
+    """Resolve the provider, inferring Gemini from the key when unset.
+
+    Google keys start with ``AIza`` -- if someone pastes one without setting
+    AI_PROVIDER, defaulting to OpenAI would produce a confusing 401, so we
+    make the sensible choice for them.
+    """
+    explicit = _get("AI_PROVIDER").lower()
+    if explicit:
+        return explicit
+    api_key = _get("AI_API_KEY")
+    base_url = _get("AI_BASE_URL").lower()
+    if "generativelanguage.googleapis.com" in base_url:
+        return "gemini"
+    if api_key.startswith("AIza"):
+        return "gemini"
+    return "openai"
 
 
 def _parse_ids(name: str) -> tuple[int, ...]:
